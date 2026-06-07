@@ -7,6 +7,7 @@ import cors       from "cors";
 import rateLimit  from "express-rate-limit";
 import Stripe     from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import nodemailer from "nodemailer";
 
 const app    = express();
 const PORT   = process.env.PORT || 3001;
@@ -17,6 +18,9 @@ const supabase = createClient(
   process.env.SUPABASE_URL       || "",
   process.env.SUPABASE_SERVICE_KEY || ""
 );
+
+// Gmail SMTP
+const transporter = nodemailer.createTransport({service:'gmail',auth:{user:process.env.GMAIL_USER||'info@myrootfinder.com',pass:process.env.GMAIL_APP_PASS||''}});
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 const allowed = (process.env.FRONTEND_URL || "http://localhost:5173").split(",");
@@ -344,6 +348,32 @@ function haversineServer(lat1, lng1, lat2, lng2) {
   const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
+
+// ── POST /api/send-code
+app.post('/api/send-code', async (req, res) => {
+  const { email } = req.body;
+  if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  await supabase.from('verification_codes').upsert({ email: email.toLowerCase(), code, expires_at: expiresAt, used: false }, { onConflict: 'email' });
+  try {
+    await transporter.sendMail({ from: '"myRootFinder" <info@myrootfinder.com>', to: email, subject: 'Your myRootFinder verification code', html: '<div style="font-family:sans-serif;padding:32px"><h2>Verify your email</h2><p>Your 6-digit code:</p><div style="background:#F5C842;font-size:36px;font-weight:900;letter-spacing:8px;text-align:center;padding:20px;border-radius:12px">' + code + '</div><p style="color:#999;font-size:12px">Expires in 10 minutes.</p></div>' });
+    res.json({ ok: true });
+  } catch (err) { console.error('Email error:', err.message); res.status(500).json({ error: 'Failed to send email' }); }
+});
+
+app.post('/api/verify-code', async (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) return res.status(400).json({ error: 'Email and code required' });
+  const { data: row } = await supabase.from('verification_codes').select('code,expires_at,used').eq('email', email.toLowerCase()).single();
+  if (!row) return res.json({ ok: false, error: 'No code found - request a new one' });
+  if (row.used) return res.json({ ok: false, error: 'Code already used - request a new one' });
+  if (new Date(row.expires_at) < new Date()) return res.json({ ok: false, error: 'Code expired - request a new one' });
+  if (row.code !== code.trim()) return res.json({ ok: false, error: 'Incorrect code' });
+  await supabase.from('verification_codes').update({ used: true }).eq('email', email.toLowerCase());
+  await supabase.from('users').upsert({ email: email.toLowerCase(), email_verified: true, tier: 'free', reports_used: 0 }, { onConflict: 'email', ignoreDuplicates: false });
+  res.json({ ok: true });
+});
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/health", (_, res) => res.json({ status: "ok", ts: new Date().toISOString() }));

@@ -349,3 +349,20 @@ function haversineServer(lat1, lng1, lat2, lng2) {
 app.get("/health", (_, res) => res.json({ status: "ok", ts: new Date().toISOString() }));
 
 app.listen(PORT, () => console.log(`myRootFinder backend running on port ${PORT}`));
+
+// ── GET /api/autocomplete — Google Places Autocomplete proxy ──────────────────
+app.get("/api/autocomplete", limiter, async (req, res) => {
+  const { input } = req.query;
+  if (!input || input.length < 3) return res.json({ predictions: [] });
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "No API key" });
+  try {
+    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&types=address&components=country:us&key=${apiKey}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    const predictions = (data.predictions || []).slice(0, 5).map(p => ({ description: p.description, place_id: p.place_id }));
+    res.json({ predictions });
+  } catch (err) {
+    res.status(500).json({ error: "Autocomplete failed" });
+  }
+});

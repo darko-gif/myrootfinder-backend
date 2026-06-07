@@ -359,7 +359,7 @@ app.post('/api/send-code', async (req, res) => {
   try {
     await transporter.sendMail({ from: '"myRootFinder" <info@myrootfinder.com>', to: email, subject: 'Your myRootFinder verification code', html: '<div style="font-family:sans-serif;padding:32px"><h2>Verify your email</h2><p>Your 6-digit code:</p><div style="background:#F5C842;font-size:36px;font-weight:900;letter-spacing:8px;text-align:center;padding:20px;border-radius:12px">' + code + '</div><p style="color:#999;font-size:12px">Expires in 10 minutes.</p></div>' });
     res.json({ ok: true });
-  } catch (err) { console.error('Email error:', err.message); res.status(500).json({ error: 'Failed to send email' }); }
+  } catch (err) { console.error('Email error full:', JSON.stringify({msg: err.message, code: err.code, response: err.response})); res.status(500).json({ error: 'Failed to send email', detail: err.message }); }
 });
 
 app.post('/api/verify-code', async (req, res) => {

@@ -348,8 +348,6 @@ function haversineServer(lat1, lng1, lat2, lng2) {
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/health", (_, res) => res.json({ status: "ok", ts: new Date().toISOString() }));
 
-app.listen(PORT, () => console.log(`myRootFinder backend running on port ${PORT}`));
-
 // ── GET /api/autocomplete — Google Places Autocomplete proxy ──────────────────
 app.get("/api/autocomplete", limiter, async (req, res) => {
   const { input } = req.query;
@@ -366,3 +364,5 @@ app.get("/api/autocomplete", limiter, async (req, res) => {
     res.status(500).json({ error: "Autocomplete failed" });
   }
 });
+
+app.listen(PORT, () => console.log(`myRootFinder backend running on port ${PORT}`));

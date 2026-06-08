@@ -7,7 +7,7 @@ import cors       from "cors";
 import rateLimit  from "express-rate-limit";
 import Stripe     from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import nodemailer from "nodemailer";
+// Using Resend API via fetch (no npm install needed)
 
 const app    = express();
 const PORT   = process.env.PORT || 3001;
@@ -19,8 +19,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY || ""
 );
 
-// Gmail SMTP
-const transporter = nodemailer.createTransport({service:'gmail',auth:{user:process.env.GMAIL_USER||'info@myrootfinder.com',pass:process.env.GMAIL_APP_PASS||''}});
+// Resend email function
+async function sendEmail(to, subject, html) {
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (process.env.RESEND_API_KEY || '') },
+    body: JSON.stringify({ from: 'myRootFinder <onboarding@resend.dev>', to, subject, html })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Resend error');
+  return data;
+}
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
 const allowed = (process.env.FRONTEND_URL || "http://localhost:5173").split(",");
@@ -357,7 +366,7 @@ app.post('/api/send-code', async (req, res) => {
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
   await supabase.from('verification_codes').upsert({ email: email.toLowerCase(), code, expires_at: expiresAt, used: false }, { onConflict: 'email' });
   try {
-    await transporter.sendMail({ from: '"myRootFinder" <info@myrootfinder.com>', to: email, subject: 'Your myRootFinder verification code', html: '<div style="font-family:sans-serif;padding:32px"><h2>Verify your email</h2><p>Your 6-digit code:</p><div style="background:#F5C842;font-size:36px;font-weight:900;letter-spacing:8px;text-align:center;padding:20px;border-radius:12px">' + code + '</div><p style="color:#999;font-size:12px">Expires in 10 minutes.</p></div>' });
+    await sendEmail(email, 'Your myRootFinder verification code', '<div style="font-family:sans-serif;padding:32px"><h2>Verify your email</h2><p>Your 6-digit code:</p><div style="background:#F5C842;font-size:36px;font-weight:900;letter-spacing:8px;text-align:center;padding:20px;border-radius:12px">' + code + '</div><p style="color:#999;font-size:12px">Expires in 10 minutes.</p></div>');
     res.json({ ok: true });
   } catch (err) { console.error('Email error full:', JSON.stringify({msg: err.message, code: err.code, response: err.response})); res.status(500).json({ error: 'Failed to send email', detail: err.message }); }
 });

@@ -376,6 +376,14 @@ function haversineServer(lat1, lng1, lat2, lng2) {
 
 // ── POST /api/send-code
 app.post('/api/send-code', async (req, res) => {
+  // Skip verification for existing verified users — check before anything else
+  const emailCheck = (req.body.email || '').toLowerCase().trim();
+  if (emailCheck) {
+    const { data: existingVerified } = await supabase.from('users').select('email_verified').eq('email', emailCheck).single();
+    if (existingVerified?.email_verified) {
+      return res.json({ ok: true, skip: true });
+    }
+  }
   const { email } = req.body;
   if (!email || !email.includes('@')) return res.status(400).json({ error: 'Valid email required' });
   const code = Math.floor(100000 + Math.random() * 900000).toString();

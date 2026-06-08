@@ -24,7 +24,7 @@ async function sendEmail(to, subject, html) {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (process.env.RESEND_API_KEY || '') },
-    body: JSON.stringify({ from: 'myRootFinder <onboarding@resend.dev>', to, subject, html })
+    body: JSON.stringify({ from: 'myRootFinder <info@myrootfinder.com>', to, subject, html })
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Resend error');

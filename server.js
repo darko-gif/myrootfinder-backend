@@ -534,12 +534,13 @@ app.get("/api/school-district", limiter, async (req, res) => {
   try {
     // Query NCES EDGE boundary API — point in polygon, returns district(s)
     const params = new URLSearchParams({
-      geometry:     `${lng},${lat}`,
-      geometryType: "esriGeometryPoint",
-      spatialRel:   "esriSpatialRelIntersects",
-      outFields:    "NAME,LEAID,STATEFP,ELSDLEA,SCSDLEA,UNSDLEA,LOGRADE,HIGRADE",
+      geometry:       JSON.stringify({ x: parseFloat(lng), y: parseFloat(lat), spatialReference: { wkid: 4326 } }),
+      geometryType:   "esriGeometryPoint",
+      inSR:           "4326",
+      spatialRel:     "esriSpatialRelIntersects",
+      outFields:      "NAME,LEAID,STATEFP,ELSDLEA,SCSDLEA,UNSDLEA,LOGRADE,HIGRADE",
       returnGeometry: "false",
-      f:            "json",
+      f:              "json",
     });
 
     const url = `https://nces.ed.gov/opengis/rest/services/School_District_Boundaries/EDGE_SCHOOLDISTRICT_TL23_SY2223/MapServer/0/query?${params}`;

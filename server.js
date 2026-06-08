@@ -570,4 +570,51 @@ app.get("/api/school-district", limiter, async (req, res) => {
   }
 });
 
+
+// ── GET /api/schools-in-district — NCES school locations by district ──────────
+// Returns real school names from NCES CCD data for a given district GEOID
+app.get("/api/schools-in-district", limiter, async (req, res) => {
+  const { lat, lng, type } = req.query;
+  if (!lat || !lng) return res.status(400).json({ error: "lat, lng required" });
+
+  try {
+    // First get the district GEOID
+    const distRes = await fetch(
+      `https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/18/query?geometry=${parseFloat(lng)},${parseFloat(lat)}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=NAME,GEOID,LOGRADE,HIGRADE&returnGeometry=false&f=json`,
+      { headers: { "User-Agent": "MyRootFinder/1.0 (contact: info@myrootfinder.com)" } }
+    );
+    const distData = await distRes.json();
+    const features = distData.features || [];
+    if (features.length === 0) return res.json({ schools: [], found: false });
+
+    const geoid = features[0].attributes.GEOID;
+
+    // Query NCES school locations for this district
+    // Layer 0 = public schools, filter by district LEAID (first 7 digits of NCES school ID match district)
+    const gradeFilter = type === "high" ? "9,10,11,12"
+      : type === "middle" ? "6,7,8"
+      : type === "elementary" ? "KG,1,2,3,4,5"
+      : "PK,KG";
+
+    const schoolRes = await fetch(
+      `https://nces.ed.gov/opengis/rest/services/K12_School_Locations/EDGE_ADMINDATA_PUBLICSCH_2122/MapServer/0/query?where=LEAID%3D%27${geoid}%27&outFields=NAME,ADDRESS,CITY,STATE,ZIP,GRSPAN,MEMBER&returnGeometry=false&f=json`,
+      { headers: { "User-Agent": "MyRootFinder/1.0 (contact: info@myrootfinder.com)" } }
+    );
+    const schoolData = await schoolRes.json();
+    console.log("NCES schools response:", JSON.stringify(schoolData).slice(0, 400));
+
+    const schools = (schoolData.features || []).map(f => ({
+      name:    f.attributes.NAME,
+      address: `${f.attributes.ADDRESS}, ${f.attributes.CITY}, ${f.attributes.STATE} ${f.attributes.ZIP}`,
+      grades:  f.attributes.GRSPAN,
+      enrollment: f.attributes.MEMBER,
+    }));
+
+    res.json({ schools, found: schools.length > 0, districtGeoid: geoid });
+  } catch (e) {
+    console.error("Schools in district error:", e);
+    res.json({ schools: [], found: false });
+  }
+});
+
 app.listen(PORT, () => console.log(`myRootFinder backend running on port ${PORT}`));

@@ -433,8 +433,8 @@ app.get("/api/autocomplete", limiter, async (req, res) => {
   }
 });
 
-// ── GET /api/geocode — Google Maps Geocoding proxy ───────────────────────────
-// Replaces Claude-based geocoding — always accurate, never hallucinates
+// ── GET /api/geocode — resolve address via Places Text Search ─────────────────
+// Uses Places Text Search (already enabled) instead of Geocoding API
 app.get("/api/geocode", limiter, async (req, res) => {
   const { address } = req.query;
   if (!address) return res.status(400).json({ error: "address required" });
@@ -443,29 +443,22 @@ app.get("/api/geocode", limiter, async (req, res) => {
   if (!apiKey) return res.status(500).json({ error: "No API key" });
 
   try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&components=country:US&key=${apiKey}`;
+    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(address)}&key=${apiKey}`;
     const resp = await fetch(url);
     const data = await resp.json();
 
     if (data.status !== "OK" || !data.results?.[0]) {
-      return res.status(404).json({ error: `Geocode failed: ${data.status}` });
+      return res.status(404).json({ error: `Could not locate: ${data.status}` });
     }
 
     const result = data.results[0];
     const loc = result.geometry.location;
+    const parts = (result.formatted_address || "").split(",");
+    const city  = parts[1]?.trim() || "";
+    const state = parts[2]?.trim().split(" ")[0] || "";
+    const display = city && state ? `${city}, ${state}` : result.name;
 
-    // Extract city and state from address components
-    const components = result.address_components || [];
-    const city  = components.find(c => c.types.includes("locality"))?.long_name || "";
-    const state = components.find(c => c.types.includes("administrative_area_level_1"))?.short_name || "";
-    const display = city && state ? `${city}, ${state}` : result.formatted_address;
-
-    res.json({
-      lat:       loc.lat,
-      lng:       loc.lng,
-      display,
-      formatted: result.formatted_address,
-    });
+    res.json({ lat: loc.lat, lng: loc.lng, display, formatted: result.formatted_address });
   } catch (e) {
     console.error("Geocode error:", e);
     res.status(500).json({ error: "Geocoding failed" });

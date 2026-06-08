@@ -219,8 +219,9 @@ app.post("/webhooks/stripe", async (req, res) => {
     const tier    = tierMap[plan] || "paid";
 
     await supabase.from("users")
-      .upsert({ email, tier, stripe_subscription_id: session.subscription,
-                updated_at: new Date().toISOString() });
+      .update({ tier, stripe_subscription_id: session.subscription,
+                updated_at: new Date().toISOString() })
+      .eq("email", email);
   }
 
   if (event.type === "customer.subscription.deleted") {

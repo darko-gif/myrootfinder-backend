@@ -275,13 +275,14 @@ app.get("/api/places", limiter, async (req, res) => {
   if (!apiKey) return res.status(500).json({ error: "Google Places API key not configured" });
 
   try {
-    // Step 1: Nearby Search — returns up to 20 results sorted by prominence
+    // Step 1: Nearby Search — rankby=distance returns closest first (no radius needed)
+    // This avoids prominence bias and gets genuinely closest results
     const params = new URLSearchParams({
       location: `${lat},${lng}`,
-      radius:   String(radius),
+      rankby:   "distance",
       type:     type,
       key:      apiKey,
-      ...(keyword ? { keyword } : {}),
+      ...(keyword ? { keyword } : { keyword: type }), // rankby=distance requires keyword or type
     });
 
     const searchRes = await fetch(
@@ -294,9 +295,8 @@ app.get("/api/places", limiter, async (req, res) => {
       return res.status(502).json({ error: `Places API: ${searchData.status}` });
     }
 
-    // Step 2: Enrich top 20 with Place Details — take 20 before distance sort
-    // Google returns by prominence not distance, so we need more to find closest
-    const top10 = (searchData.results || []).slice(0, 20);
+    // Step 2: Enrich top 10 with Place Details (phone, hours, website)
+    const top10 = (searchData.results || []).slice(0, 10);
 
     const enriched = await Promise.all(top10.map(async (place) => {
       try {

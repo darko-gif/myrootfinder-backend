@@ -531,28 +531,39 @@ app.get("/api/school-district", limiter, async (req, res) => {
   if (!lat || !lng) return res.status(400).json({ error: "lat and lng required" });
 
   try {
-    // Census TIGERweb API — returns political geography including school districts
-    const url = `https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/14/query?geometry=${parseFloat(lng)},${parseFloat(lat)}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=NAME,GEOID,LOGRADE,HIGRADE&returnGeometry=false&f=json`;
+    // Census TIGERweb — layers 16 (unified), 17 (secondary), 18 (elementary)
+    // Spatial ref is 102100 (Web Mercator) — must specify inSR=4326 for lat/lng input
+    const headers = { "User-Agent": "MyRootFinder/1.0 (contact: info@myrootfinder.com)" };
+    const baseParams = `geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=NAME,GEOID,LOGRADE,HIGRADE&returnGeometry=false&f=json&geometry=${parseFloat(lng)},${parseFloat(lat)}`;
 
-    const resp = await fetch(url, {
-      headers: { "User-Agent": "MyRootFinder/1.0 (contact: info@myrootfinder.com)" }
-    });
-    const data = await resp.json();
-    console.log("Census district response:", JSON.stringify(data).slice(0, 400));
+    // Query all three district types in parallel
+    const [unified, secondary, elementary] = await Promise.all([
+      fetch(`https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/16/query?${baseParams}`, { headers }).then(r => r.json()).catch(() => ({ features: [] })),
+      fetch(`https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/17/query?${baseParams}`, { headers }).then(r => r.json()).catch(() => ({ features: [] })),
+      fetch(`https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/18/query?${baseParams}`, { headers }).then(r => r.json()).catch(() => ({ features: [] })),
+    ]);
 
-    const features = data.features || [];
-    if (features.length === 0) {
+    console.log("TIGERweb unified:", JSON.stringify(unified).slice(0, 200));
+    console.log("TIGERweb elementary:", JSON.stringify(elementary).slice(0, 200));
+
+    const allFeatures = [
+      ...(unified.features || []),
+      ...(secondary.features || []),
+      ...(elementary.features || []),
+    ];
+
+    if (allFeatures.length === 0) {
       return res.json({ districts: [], found: false });
     }
 
-    const districts = features.map(f => ({
-      name:    f.attributes.NAME,
+    const districts = allFeatures.map(f => ({
+      name:    f.attributes.NAME || f.attributes.BASENAME,
       geoid:   f.attributes.GEOID,
       lograde: f.attributes.LOGRADE,
       higrade: f.attributes.HIGRADE,
-    }));
+    })).filter(d => d.name);
 
-    res.json({ districts, found: true });
+    res.json({ districts, found: districts.length > 0 });
   } catch (e) {
     console.error("Census district lookup error:", e);
     res.json({ districts: [], found: false });

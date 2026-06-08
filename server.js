@@ -464,4 +464,51 @@ app.get("/api/geocode", limiter, async (req, res) => {
   }
 });
 
+
+// ── GET /api/school-district — NCES boundary lookup (free, no key) ────────────
+// Returns the exact school district(s) for any US lat/lng
+// Data source: NCES EDGE School District Boundaries (US Census Bureau)
+app.get("/api/school-district", limiter, async (req, res) => {
+  const { lat, lng } = req.query;
+  if (!lat || !lng) return res.status(400).json({ error: "lat and lng required" });
+
+  try {
+    // Query NCES EDGE boundary API — point in polygon, returns district(s)
+    const params = new URLSearchParams({
+      geometry:     `${lng},${lat}`,
+      geometryType: "esriGeometryPoint",
+      spatialRel:   "esriSpatialRelIntersects",
+      outFields:    "NAME,LEAID,STATEFP,ELSDLEA,SCSDLEA,UNSDLEA,LOGRADE,HIGRADE",
+      returnGeometry: "false",
+      f:            "json",
+    });
+
+    const url = `https://nces.ed.gov/opengis/rest/services/School_District_Boundaries/EDGE_SCHOOLDISTRICT_TL23_SY2223/MapServer/0/query?${params}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+
+    const features = data.features || [];
+    if (features.length === 0) {
+      return res.json({ districts: [], found: false });
+    }
+
+    // Return all matching districts (address can be in multiple — e.g. elem + high)
+    const districts = features.map(f => ({
+      name:     f.attributes.NAME,
+      leaid:    f.attributes.LEAID,
+      lograde:  f.attributes.LOGRADE,
+      higrade:  f.attributes.HIGRADE,
+      elsdlea:  f.attributes.ELSDLEA,
+      scsdlea:  f.attributes.SCSDLEA,
+      unsdlea:  f.attributes.UNSDLEA,
+      statefp:  f.attributes.STATEFP,
+    }));
+
+    res.json({ districts, found: true });
+  } catch (e) {
+    console.error("NCES lookup error:", e);
+    res.status(500).json({ error: "District lookup failed", districts: [], found: false });
+  }
+});
+
 app.listen(PORT, () => console.log(`myRootFinder backend running on port ${PORT}`));

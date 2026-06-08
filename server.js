@@ -524,59 +524,38 @@ app.get("/api/geocode", limiter, async (req, res) => {
 });
 
 
-// ── GET /api/school-district — NCES boundary lookup (free, no key) ────────────
-// Returns the exact school district(s) for any US lat/lng
-// Data source: NCES EDGE School District Boundaries (US Census Bureau)
+// ── GET /api/school-district — Census Geocoder district lookup (free, no key) ─
+// Uses US Census Bureau geocoder which returns school district info
 app.get("/api/school-district", limiter, async (req, res) => {
   const { lat, lng } = req.query;
   if (!lat || !lng) return res.status(400).json({ error: "lat and lng required" });
 
   try {
-    // Query NCES EDGE boundary API — point in polygon
-    // NCES uses wkid 4269 (NAD83) — must specify inSR=4326 for WGS84 input coords
-    const params = new URLSearchParams({
-      geometry:       `${parseFloat(lng)},${parseFloat(lat)}`,
-      geometryType:   "esriGeometryPoint",
-      inSR:           "4326",
-      outSR:          "4326",
-      spatialRel:     "esriSpatialRelIntersects",
-      outFields:      "NAME,LEAID,STATEFP,ELSDLEA,SCSDLEA,UNSDLEA,LOGRADE,HIGRADE",
-      returnGeometry: "false",
-      f:              "json",
-    });
+    // Census TIGERweb API — returns political geography including school districts
+    const url = `https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/14/query?geometry=${parseFloat(lng)},${parseFloat(lat)}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=NAME,GEOID,LOGRADE,HIGRADE&returnGeometry=false&f=json`;
 
-    const url = `https://nces.ed.gov/opengis/rest/services/School_District_Boundaries/EDGE_SCHOOLDISTRICT_TL23_SY2223/MapServer/0/query?${params}`;
     const resp = await fetch(url, {
-      headers: { "User-Agent": "MyRootFinder/1.0 (Node.js; myrootfinder.com; info@myrootfinder.com)" }
+      headers: { "User-Agent": "MyRootFinder/1.0 (contact: info@myrootfinder.com)" }
     });
-    const rawText = await resp.text();
-    console.log("NCES response status:", resp.status, "body:", rawText.slice(0, 300));
-    let data;
-    try { data = JSON.parse(rawText); } catch(e) {
-      return res.json({ districts: [], found: false, debug: rawText.slice(0, 200) });
-    }
+    const data = await resp.json();
+    console.log("Census district response:", JSON.stringify(data).slice(0, 400));
 
     const features = data.features || [];
     if (features.length === 0) {
-      return res.json({ districts: [], found: false, debug: data.error || data });
+      return res.json({ districts: [], found: false });
     }
 
-    // Return all matching districts (address can be in multiple — e.g. elem + high)
     const districts = features.map(f => ({
-      name:     f.attributes.NAME,
-      leaid:    f.attributes.LEAID,
-      lograde:  f.attributes.LOGRADE,
-      higrade:  f.attributes.HIGRADE,
-      elsdlea:  f.attributes.ELSDLEA,
-      scsdlea:  f.attributes.SCSDLEA,
-      unsdlea:  f.attributes.UNSDLEA,
-      statefp:  f.attributes.STATEFP,
+      name:    f.attributes.NAME,
+      geoid:   f.attributes.GEOID,
+      lograde: f.attributes.LOGRADE,
+      higrade: f.attributes.HIGRADE,
     }));
 
     res.json({ districts, found: true });
   } catch (e) {
-    console.error("NCES lookup error:", e);
-    res.status(500).json({ error: "District lookup failed", districts: [], found: false });
+    console.error("Census district lookup error:", e);
+    res.json({ districts: [], found: false });
   }
 });
 

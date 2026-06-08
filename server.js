@@ -545,11 +545,16 @@ app.get("/api/school-district", limiter, async (req, res) => {
     const resp = await fetch(url, {
       headers: { "User-Agent": "MyRootFinder/1.0 (Node.js; myrootfinder.com; info@myrootfinder.com)" }
     });
-    const data = await resp.json();
+    const rawText = await resp.text();
+    console.log("NCES response status:", resp.status, "body:", rawText.slice(0, 300));
+    let data;
+    try { data = JSON.parse(rawText); } catch(e) {
+      return res.json({ districts: [], found: false, debug: rawText.slice(0, 200) });
+    }
 
     const features = data.features || [];
     if (features.length === 0) {
-      return res.json({ districts: [], found: false });
+      return res.json({ districts: [], found: false, debug: data.error || data });
     }
 
     // Return all matching districts (address can be in multiple — e.g. elem + high)

@@ -620,4 +620,18 @@ app.get("/api/schools-in-district", limiter, async (req, res) => {
   }
 });
 
+
+// ── GET /api/test-nces — test NCES school lookup ─────────────────────────────
+app.get("/api/test-nces", async (req, res) => {
+  const leaid = req.query.leaid || "1721600";
+  try {
+    const url = `https://nces.ed.gov/opengis/rest/services/K12_School_Locations/EDGE_ADMINDATA_PUBLICSCH_2122/MapServer/0/query?where=LEAID+%3D+%27${leaid}%27&outFields=NAME,ADDRESS,CITY,STATE,ZIP,GRSPAN&returnGeometry=false&resultRecordCount=20&f=json`;
+    const r = await fetch(url, { headers: { "User-Agent": "MyRootFinder/1.0" } });
+    const d = await r.json();
+    res.json({ features: (d.features||[]).map(f => f.attributes), error: d.error });
+  } catch(e) {
+    res.json({ error: e.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`myRootFinder backend running on port ${PORT}`));

@@ -58,6 +58,7 @@ const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max:      30,
   message:  { error: "Too many requests — please wait a few minutes." },
+  validate: { xForwardedForHeader: false }, // Railway sets X-Forwarded-For — disable this validation
 });
 
 // ── Helper: check user access ─────────────────────────────────────────────────

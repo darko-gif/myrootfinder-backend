@@ -110,7 +110,7 @@ app.post("/api/search", limiter, async (req, res) => {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model:      "claude-sonnet-4-5-20250929",
+        model:      "claude-sonnet-4-5",
         max_tokens: Math.min(max_tokens, 4000),
         messages:   [{ role: "user", content: prompt }],
       }),
@@ -430,6 +430,45 @@ app.get("/api/autocomplete", limiter, async (req, res) => {
     res.json({ predictions });
   } catch (err) {
     res.status(500).json({ error: "Autocomplete failed" });
+  }
+});
+
+// ── GET /api/geocode — Google Maps Geocoding proxy ───────────────────────────
+// Replaces Claude-based geocoding — always accurate, never hallucinates
+app.get("/api/geocode", limiter, async (req, res) => {
+  const { address } = req.query;
+  if (!address) return res.status(400).json({ error: "address required" });
+
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "No API key" });
+
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&components=country:US&key=${apiKey}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+
+    if (data.status !== "OK" || !data.results?.[0]) {
+      return res.status(404).json({ error: `Geocode failed: ${data.status}` });
+    }
+
+    const result = data.results[0];
+    const loc = result.geometry.location;
+
+    // Extract city and state from address components
+    const components = result.address_components || [];
+    const city  = components.find(c => c.types.includes("locality"))?.long_name || "";
+    const state = components.find(c => c.types.includes("administrative_area_level_1"))?.short_name || "";
+    const display = city && state ? `${city}, ${state}` : result.formatted_address;
+
+    res.json({
+      lat:       loc.lat,
+      lng:       loc.lng,
+      display,
+      formatted: result.formatted_address,
+    });
+  } catch (e) {
+    console.error("Geocode error:", e);
+    res.status(500).json({ error: "Geocoding failed" });
   }
 });
 

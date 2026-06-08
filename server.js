@@ -380,7 +380,12 @@ app.post('/api/verify-code', async (req, res) => {
   if (new Date(row.expires_at) < new Date()) return res.json({ ok: false, error: 'Code expired - request a new one' });
   if (row.code !== code.trim()) return res.json({ ok: false, error: 'Incorrect code' });
   await supabase.from('verification_codes').update({ used: true }).eq('email', email.toLowerCase());
-  await supabase.from('users').upsert({ email: email.toLowerCase(), email_verified: true, tier: 'free', reports_used: 0 }, { onConflict: 'email', ignoreDuplicates: false });
+  const { data: existingUser } = await supabase.from('users').select('reports_used').eq('email', email.toLowerCase()).single();
+  if (existingUser) {
+    await supabase.from('users').update({ email_verified: true }).eq('email', email.toLowerCase());
+  } else {
+    await supabase.from('users').insert({ email: email.toLowerCase(), email_verified: true, tier: 'free', reports_used: 0, created_at: new Date().toISOString() });
+  }
   res.json({ ok: true });
 });
 

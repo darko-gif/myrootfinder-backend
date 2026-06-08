@@ -294,8 +294,9 @@ app.get("/api/places", limiter, async (req, res) => {
       return res.status(502).json({ error: `Places API: ${searchData.status}` });
     }
 
-    // Step 2: Enrich top 10 with Place Details (phone, hours, website)
-    const top10 = (searchData.results || []).slice(0, 10);
+    // Step 2: Enrich top 20 with Place Details — take 20 before distance sort
+    // Google returns by prominence not distance, so we need more to find closest
+    const top10 = (searchData.results || []).slice(0, 20);
 
     const enriched = await Promise.all(top10.map(async (place) => {
       try {

@@ -433,6 +433,64 @@ app.get("/api/autocomplete", limiter, async (req, res) => {
   }
 });
 
+// ── GET /api/places-nearby — distance-ranked Places search (no radius needed) ─
+// Used for neighborhood tab where closest matters more than prominence
+app.get("/api/places-nearby", limiter, async (req, res) => {
+  const { lat, lng, type, keyword = "" } = req.query;
+  if (!lat || !lng || !type) return res.status(400).json({ error: "lat, lng, type required" });
+
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "No API key" });
+
+  try {
+    // rankby=distance returns closest first — requires keyword or type (no radius)
+    const params = new URLSearchParams({
+      location: `${lat},${lng}`,
+      rankby:   "distance",
+      type:     type,
+      key:      apiKey,
+      ...(keyword ? { keyword } : {}),
+    });
+
+    const searchRes = await fetch(`https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params}`);
+    const searchData = await searchRes.json();
+
+    if (searchData.status !== "OK" && searchData.status !== "ZERO_RESULTS") {
+      return res.status(502).json({ error: `Places API: ${searchData.status}` });
+    }
+
+    const top10 = (searchData.results || []).slice(0, 10);
+
+    const enriched = await Promise.all(top10.map(async (place) => {
+      const pLat = place.geometry?.location?.lat ?? 0;
+      const pLng = place.geometry?.location?.lng ?? 0;
+      return {
+        name:           place.name,
+        address:        place.vicinity || "",
+        lat:            pLat,
+        lng:            pLng,
+        phone:          "",
+        website:        "",
+        rating:         place.rating ?? null,
+        rating_count:   place.user_ratings_total ?? 0,
+        price_level:    null,
+        hours:          "",
+        open_now:       place.opening_hours?.open_now ?? null,
+        types:          (place.types || []).filter(t => t !== "point_of_interest" && t !== "establishment").slice(0, 3),
+        distance_miles: Math.round(haversineServer(parseFloat(lat), parseFloat(lng), pLat, pLng) * 10) / 10,
+        place_id:       place.place_id,
+        source:         "google_places",
+      };
+    }));
+
+    enriched.sort((a, b) => a.distance_miles - b.distance_miles);
+    res.json({ results: enriched, status: searchData.status });
+  } catch (e) {
+    console.error("Places-nearby error:", e);
+    res.status(500).json({ error: "Places lookup failed" });
+  }
+});
+
 // ── GET /api/geocode — Google Maps Geocoding API proxy ───────────────────────
 app.get("/api/geocode", limiter, async (req, res) => {
   const { address } = req.query;

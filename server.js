@@ -275,14 +275,13 @@ app.get("/api/places", limiter, async (req, res) => {
   if (!apiKey) return res.status(500).json({ error: "Google Places API key not configured" });
 
   try {
-    // Step 1: Nearby Search — rankby=distance returns closest first (no radius needed)
-    // This avoids prominence bias and gets genuinely closest results
+    // Step 1: Nearby Search within radius, sorted by prominence then re-sorted by distance
     const params = new URLSearchParams({
       location: `${lat},${lng}`,
-      rankby:   "distance",
+      radius:   String(radius),
       type:     type,
       key:      apiKey,
-      ...(keyword ? { keyword } : { keyword: type }), // rankby=distance requires keyword or type
+      ...(keyword ? { keyword } : {}),
     });
 
     const searchRes = await fetch(

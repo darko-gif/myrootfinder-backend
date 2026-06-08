@@ -542,7 +542,9 @@ app.get("/api/school-district", limiter, async (req, res) => {
     });
 
     const url = `https://nces.ed.gov/opengis/rest/services/School_District_Boundaries/EDGE_SCHOOLDISTRICT_TL23_SY2223/MapServer/0/query?${params}`;
-    const resp = await fetch(url);
+    const resp = await fetch(url, {
+      headers: { "User-Agent": "MyRootFinder/1.0 (Node.js; myrootfinder.com; info@myrootfinder.com)" }
+    });
     const data = await resp.json();
 
     const features = data.features || [];

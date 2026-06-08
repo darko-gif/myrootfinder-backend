@@ -596,12 +596,15 @@ app.get("/api/schools-in-district", limiter, async (req, res) => {
       : type === "elementary" ? "KG,1,2,3,4,5"
       : "PK,KG";
 
-    const schoolRes = await fetch(
-      `https://nces.ed.gov/opengis/rest/services/K12_School_Locations/EDGE_ADMINDATA_PUBLICSCH_2122/MapServer/0/query?where=LEAID%3D%27${geoid}%27&outFields=NAME,ADDRESS,CITY,STATE,ZIP,GRSPAN,MEMBER&returnGeometry=false&f=json`,
+    // Try multiple LEAID formats — NCES uses 7-digit format
+    const leaid = geoid.toString().padStart(7, "0");
+    const schoolUrl = `https://nces.ed.gov/opengis/rest/services/K12_School_Locations/EDGE_ADMINDATA_PUBLICSCH_2122/MapServer/0/query?where=LEAID+%3D+%27${leaid}%27&outFields=NAME,ADDRESS,CITY,STATE,ZIP,GRSPAN,MEMBER&returnGeometry=false&resultRecordCount=50&f=json`;
+    console.log("Fetching schools URL:", schoolUrl);
+    const schoolRes = await fetch(schoolUrl,
       { headers: { "User-Agent": "MyRootFinder/1.0 (contact: info@myrootfinder.com)" } }
     );
     const schoolData = await schoolRes.json();
-    console.log("NCES schools response:", JSON.stringify(schoolData).slice(0, 400));
+    console.log("NCES schools response:", JSON.stringify(schoolData).slice(0, 600));
 
     const schools = (schoolData.features || []).map(f => ({
       name:    f.attributes.NAME,

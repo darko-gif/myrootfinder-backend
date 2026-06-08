@@ -532,11 +532,13 @@ app.get("/api/school-district", limiter, async (req, res) => {
   if (!lat || !lng) return res.status(400).json({ error: "lat and lng required" });
 
   try {
-    // Query NCES EDGE boundary API — point in polygon, returns district(s)
+    // Query NCES EDGE boundary API — point in polygon
+    // NCES uses wkid 4269 (NAD83) — must specify inSR=4326 for WGS84 input coords
     const params = new URLSearchParams({
-      geometry:       JSON.stringify({ x: parseFloat(lng), y: parseFloat(lat), spatialReference: { wkid: 4326 } }),
+      geometry:       `${parseFloat(lng)},${parseFloat(lat)}`,
       geometryType:   "esriGeometryPoint",
       inSR:           "4326",
+      outSR:          "4326",
       spatialRel:     "esriSpatialRelIntersects",
       outFields:      "NAME,LEAID,STATEFP,ELSDLEA,SCSDLEA,UNSDLEA,LOGRADE,HIGRADE",
       returnGeometry: "false",

@@ -150,9 +150,24 @@ app.post("/api/start-search", limiter, async (req, res) => {
     return res.json({ allowed: true, tier: "corporate", company: corp.company });
   }
 
-  // Free: 1 report
+  // Free: 1 report max
   if (tier === "free" && reportsUsed >= 1) {
     return res.json({ allowed: false, reason: "free_limit", reportsUsed });
+  }
+
+  // Standard (paid): 10 reports/month
+  if (tier === "paid") {
+    const { data: u } = await supabase.from("users").select("reports_used, period_start").eq("email", email.toLowerCase()).single();
+    const now = new Date();
+    const periodStart = u?.period_start ? new Date(u.period_start) : null;
+    const sameMonth = periodStart && periodStart.getMonth() === now.getMonth() && periodStart.getFullYear() === now.getFullYear();
+    const monthlyCount = sameMonth ? (u.reports_used || 0) : 0;
+    if (monthlyCount >= 10) {
+      return res.json({ allowed: false, reason: "monthly_limit", reportsUsed: monthlyCount });
+    }
+    if (!sameMonth) {
+      await supabase.from("users").update({ reports_used: 0, period_start: now.toISOString() }).eq("email", email.toLowerCase());
+    }
   }
 
   // Increment report counter

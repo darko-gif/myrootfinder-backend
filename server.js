@@ -635,3 +635,29 @@ app.get("/api/test-nces", async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`myRootFinder backend running on port ${PORT}`));
+
+// ── POST /create-portal-session — Stripe Customer Portal ─────────────────────
+app.post("/create-portal-session", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email required" });
+  try {
+    const { data: user } = await supabase.from("users").select("stripe_customer_id, stripe_subscription_id").eq("email", email).single();
+    if (!user?.stripe_customer_id && !user?.stripe_subscription_id) {
+      return res.status(400).json({ error: "No subscription found" });
+    }
+    // Get customer ID from subscription if not stored directly
+    let customerId = user.stripe_customer_id;
+    if (!customerId && user.stripe_subscription_id) {
+      const sub = await stripe.subscriptions.retrieve(user.stripe_subscription_id);
+      customerId = sub.customer;
+    }
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${process.env.FRONTEND_URL}/app`,
+    });
+    res.json({ url: session.url });
+  } catch (e) {
+    console.error("Portal error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});

@@ -637,37 +637,27 @@ app.get("/api/test-nces", async (req, res) => {
 
 app.listen(PORT, () => console.log(`myRootFinder backend running on port ${PORT}`));
 
-// ── POST /create-portal-session — Stripe Customer Portal ─────────────────────
-app.post("/create-portal-session", async (req, res) => {
-  const { email } = req.body;
+// ── POST /cancel-request — collect survey + email Darko to cancel manually ───
+app.post("/cancel-request", async (req, res) => {
+  const { email, answers } = req.body;
   if (!email) return res.status(400).json({ error: "Email required" });
   try {
-    const { data: user } = await supabase.from("users").select("stripe_customer_id, stripe_subscription_id").eq("email", email).single();
-
-    // Resolve the Stripe customer ID via three fallbacks:
-    let customerId = user?.stripe_customer_id || null;
-    // 1) from a stored subscription id
-    if (!customerId && user?.stripe_subscription_id) {
-      try {
-        const sub = await stripe.subscriptions.retrieve(user.stripe_subscription_id);
-        customerId = sub.customer;
-      } catch (e) { /* fall through to email lookup */ }
-    }
-    // 2) look the customer up by email directly in Stripe
-    if (!customerId) {
-      const list = await stripe.customers.list({ email, limit: 1 });
-      if (list.data.length) customerId = list.data[0].id;
-    }
-    if (!customerId) {
-      return res.status(400).json({ error: "No subscription found for this email. Please email info@myrootfinder.com and we'll cancel it for you." });
-    }
-    const session = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: `${process.env.FRONTEND_URL}/app`,
-    });
-    res.json({ url: session.url });
+    const html = `
+      <h2 style="color:#1B2A4A">🚨 Cancellation Request</h2>
+      <p><strong>Customer email:</strong> ${email}</p>
+      <hr/>
+      <p><strong>Why are you cancelling?</strong><br/>${answers?.reason || "—"}</p>
+      <p><strong>How satisfied were you overall?</strong><br/>${answers?.satisfaction || "—"}</p>
+      <p><strong>What's the one thing we could improve?</strong><br/>${answers?.improvement || "—"}</p>
+      <hr/>
+      <p style="color:#6b7280;font-size:12px">
+        Action required: cancel in Stripe dashboard, then reply to ${email} confirming cancellation.
+      </p>
+    `;
+    await sendEmail("info@myrootfinder.com", `Cancel request from ${email}`, html);
+    res.json({ ok: true });
   } catch (e) {
-    console.error("Portal error:", e);
-    res.status(500).json({ error: e.message });
+    console.error("Cancel request error:", e);
+    res.status(500).json({ error: "Failed to send request" });
   }
 });

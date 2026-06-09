@@ -236,6 +236,7 @@ app.post("/webhooks/stripe", async (req, res) => {
 
     await supabase.from("users")
       .update({ tier, stripe_subscription_id: session.subscription,
+                stripe_customer_id: session.customer,
                 updated_at: new Date().toISOString() })
       .eq("email", email);
   }
@@ -642,14 +643,23 @@ app.post("/create-portal-session", async (req, res) => {
   if (!email) return res.status(400).json({ error: "Email required" });
   try {
     const { data: user } = await supabase.from("users").select("stripe_customer_id, stripe_subscription_id").eq("email", email).single();
-    if (!user?.stripe_customer_id && !user?.stripe_subscription_id) {
-      return res.status(400).json({ error: "No subscription found" });
+
+    // Resolve the Stripe customer ID via three fallbacks:
+    let customerId = user?.stripe_customer_id || null;
+    // 1) from a stored subscription id
+    if (!customerId && user?.stripe_subscription_id) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(user.stripe_subscription_id);
+        customerId = sub.customer;
+      } catch (e) { /* fall through to email lookup */ }
     }
-    // Get customer ID from subscription if not stored directly
-    let customerId = user.stripe_customer_id;
-    if (!customerId && user.stripe_subscription_id) {
-      const sub = await stripe.subscriptions.retrieve(user.stripe_subscription_id);
-      customerId = sub.customer;
+    // 2) look the customer up by email directly in Stripe
+    if (!customerId) {
+      const list = await stripe.customers.list({ email, limit: 1 });
+      if (list.data.length) customerId = list.data[0].id;
+    }
+    if (!customerId) {
+      return res.status(400).json({ error: "No subscription found for this email. Please email info@myrootfinder.com and we'll cancel it for you." });
     }
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,

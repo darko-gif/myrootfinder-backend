@@ -637,6 +637,83 @@ app.get("/api/test-nces", async (req, res) => {
 
 app.listen(PORT, () => console.log(`myRootFinder backend running on port ${PORT}`));
 
+
+// ── POST /api/crime — AI-powered crime/safety summary for an address ──────────
+app.post("/api/crime", limiter, async (req, res) => {
+  const { lat, lng, address } = req.body;
+  if (!lat || !lng) return res.status(400).json({ error: "lat/lng required" });
+
+  const city = address ? address.split(",").slice(-3).join(",").trim() : `${lat},${lng}`;
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type":      "application/json",
+        "x-api-key":         process.env.ANTHROPIC_API_KEY || "",
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta":    "web-search-2025-03-05",
+      },
+      body: JSON.stringify({
+        model:      "claude-sonnet-4-5",
+        max_tokens: 1500,
+        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        messages: [{
+          role: "user",
+          content: `Search for recent crime data and safety information for the area near "${address || city}" within approximately 1 mile radius. Look for crime statistics, recent incidents from the past 1-2 weeks, and overall neighborhood safety ratings.
+
+Return ONLY a JSON object, no markdown, no explanation:
+{
+  "safetyScore": 0-100,
+  "safetyLabel": "Very Safe|Safe|Moderate|Elevated|High Crime",
+  "summary": "2-3 sentence overall safety assessment for families",
+  "weeklyIncidents": estimated number or null if unknown,
+  "breakdown": [
+    {"type": "Theft", "count": 0, "trend": "stable|rising|falling"},
+    {"type": "Assault", "count": 0, "trend": "stable|rising|falling"},
+    {"type": "Burglary", "count": 0, "trend": "stable|rising|falling"},
+    {"type": "Vandalism", "count": 0, "trend": "stable|rising|falling"}
+  ],
+  "recentHighlights": ["brief note about recent incident or pattern", "..."],
+  "dataSource": "source name",
+  "lastUpdated": "approximate date or time period of data"
+}`
+        }],
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      return res.status(502).json({ error: err.error?.message || "AI error" });
+    }
+
+    const data = await response.json();
+    // Extract text from response (may include tool use blocks)
+    const text = data.content?.find(b => b.type === "text")?.text || "";
+    
+    try {
+      const clean = text.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      res.json(parsed);
+    } catch (e) {
+      // Return a safe fallback if parsing fails
+      res.json({
+        safetyScore: 50,
+        safetyLabel: "Data Unavailable",
+        summary: "Crime data is not available for this specific area at this time. Check local police department websites for current information.",
+        weeklyIncidents: null,
+        breakdown: [],
+        recentHighlights: [],
+        dataSource: "N/A",
+        lastUpdated: "N/A"
+      });
+    }
+  } catch (e) {
+    console.error("Crime API error:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // ── POST /cancel-request — collect survey + email Darko to cancel manually ───
 app.post("/cancel-request", async (req, res) => {
   const { email, answers } = req.body;

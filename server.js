@@ -56,7 +56,7 @@ app.use((req, res, next) => {
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max:      30,
+  max:      200,
   message:  { error: "Too many requests — please wait a few minutes." },
   validate: { xForwardedForHeader: false }, // Railway sets X-Forwarded-For — disable this validation
 });

@@ -654,6 +654,14 @@ app.post("/cancel-request", async (req, res) => {
         Action required: cancel in Stripe dashboard, then reply to ${email} confirming cancellation.
       </p>
     `;
+    // Store in Supabase for analytics
+    await supabase.from("cancellations").insert({
+      email,
+      reason:       answers?.reason       || null,
+      satisfaction: answers?.satisfaction || null,
+      improvement:  answers?.improvement  || null,
+    });
+
     await sendEmail("darko@myrootfinder.com", `🚨 Cancel request from ${email}`, html);
     res.json({ ok: true });
   } catch (e) {

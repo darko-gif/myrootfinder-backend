@@ -654,7 +654,7 @@ app.post("/cancel-request", async (req, res) => {
         Action required: cancel in Stripe dashboard, then reply to ${email} confirming cancellation.
       </p>
     `;
-    await sendEmail("Dsimunovic@gmail.com", `🚨 Cancel request from ${email}`, html);
+    await sendEmail("darko@myrootfinder.com", `🚨 Cancel request from ${email}`, html);
     res.json({ ok: true });
   } catch (e) {
     console.error("Cancel request error:", e);
